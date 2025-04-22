@@ -17,10 +17,10 @@ func main() {
 	var withUrl bool
 	var withLineNum bool
 	var recursive bool
-	concurrency := 5
+	var concurrency int
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: cat <urls-file> | ./wepp <pattern> [url]\n")
+		fmt.Fprintf(os.Stderr, "usage: cat <urls-file> | ./wepp <pattern> [url+]\n")
 		flag.PrintDefaults()
 	}
 
@@ -31,13 +31,13 @@ func main() {
 	flag.BoolVar(&withLineNum, "n", false, "display line number of matching line")
 	flag.BoolVar(&withUrl, "H", false, "display URL of matching page before line")
 	flag.BoolVar(&recursive, "r", false, "recursively search url directory using links in page")
-	flag.IntVar(&concurrency, "c", 1, "concurrency of web requests")
+	flag.IntVar(&concurrency, "c", 5, "concurrency of web requests")
 	flag.Parse()
 
+	// patterns to grep for
 	var patterns []string
 
 	// good arguments?
-
 	args := flag.Args()
 	if len(args) == 0 && !patFromFile {
 		flag.Usage()
@@ -54,20 +54,34 @@ func main() {
 	urls := make(chan string)
 	output := make(chan string)
 
+	// set up workers
 	var handymen sync.WaitGroup
-
-	// set up worker function
 	for i = 0; i < concurrency; i++ {
 		handymen.Add(1)
 		go func() {
 			for url := range urls {
 
 			}
+			handymen.Done()
 		}()
-		handymen.Done()
 	}
 
-	// get base sites
+	go func() {
+		handymen.Wait()
+		close(output)
+	}()
+
+	// set up output
+	var lookyloo sync.WaitGroup
+	lookyloo.Add(1)
+	go func() {
+		for o := output {
+			fmt.Println(o)
+		}
+		lookyloo.Done()
+	}()
+
+	// start sending urls for pages to grep
 	if len(args) == 1 {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
@@ -75,7 +89,10 @@ func main() {
 		}
 	} else {
 		for _, url := range args[1:] {
+			urls <- url
 		}
 	}
-
+	
+	close(urls)
+	lookyloo.Wait()
 }
