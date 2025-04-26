@@ -2,6 +2,12 @@
 
 A go program for greping webpages with my most used grep options.
 
+## TODO
+
+- find url paths that are relative in recursive mode
+- find url paths based on html fields 'href, src, etc.'
+- implement request headers?
+
 ## usage
 
 ```
