@@ -2,15 +2,17 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
+	"golang.org/x/net/html"
 	"golang.org/x/time/rate"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -169,41 +171,18 @@ func dealWithReq(u string) {
 		return
 	}
 
-	// set up regex, base directory and slice for url extraction
-	re := regexp.MustCompile(`https?://[^\s"]+`)
-	urlDir, err := removeFile(u)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		failure(err, u)
 		return
 	}
-	lus := []string{}
+	resp.Body.Close()
 
 	// scan over response
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(bytes.NewReader(body))
 	lineNum := 1
 	for scanner.Scan() {
 		line := scanner.Text()
-
-		// if recursive, extract all applicable urls
-		if recursive {
-			matches := re.FindAllString(line, -1)
-			for _, match := range matches {
-				_, err := url.ParseRequestURI(match)
-				if err != nil {
-					continue
-				}
-				matchDir, err := removeFile(match)
-				if err != nil {
-					continue
-				}
-				fmt.Println(matchDir, ":", urlDir)
-				if strings.HasPrefix(matchDir, urlDir) && matchDir != urlDir {
-					fmt.Println("MATCH", matchDir, ":", urlDir)
-					lus = append(lus, match)
-				}
-			}
-
-		}
 
 		// check for matches, highlight if applicable
 		match := false
@@ -211,7 +190,7 @@ func dealWithReq(u string) {
 		for _, pat := range patterns {
 			if strings.Contains(line, pat) && !invertMatch {
 				match = true
-				markedLine = highlight(markedLine, pat)
+				markedLine = strings.TrimSpace(highlight(markedLine, pat))
 			} else if invertMatch {
 				break
 			}
@@ -229,18 +208,60 @@ func dealWithReq(u string) {
 		}
 		lineNum++
 	}
-	resp.Body.Close()
 
-	// either send url to channel, or deal with it yourself
-	for _, lu := range lus {
-		urlCount.Add(1)
-		select {
-		case urls <- lu:
-			urls <- lu
-		default:
-			dealWithReq(lu)
+	if recursive {
+		htmlDoc, err := html.Parse(bytes.NewReader(body))
+		if err != nil {
+			failure(err, u)
+			return
+		}
+
+		lus, err := extractLinks(htmlDoc, u)
+		if err != nil {
+			failure(err, u)
+			return
+		}
+
+		// either send url to channel, or deal with it yourself
+		for _, lu := range lus {
+			urlCount.Add(1)
+			select {
+			case urls <- lu:
+				urls <- lu
+			default:
+				dealWithReq(lu)
+			}
 		}
 	}
+}
+
+// extract the urls from 'src' and 'href' attributes
+func extractLinks(n *html.Node, u string) ([]string, error) {
+	urlDir, err := url.Parse(u)
+	if err != nil {
+		return nil, err
+	}
+
+	links := []string{}
+	if n.Type == html.ElementNode {
+		for _, attr := range n.Attr {
+			if attr.Key == "href" || attr.Key == "src" {
+				newu, err := url.Parse(attr.Val)
+				if err == nil {
+					newu = urlDir.ResolveReference(newu)
+				}
+				links = append(links, newu.String())
+			}
+		}
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		newLinks, err := extractLinks(c, u)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, newLinks...)
+	}
+	return links, nil
 }
 
 // get the directory prefix of `fullUrl`
