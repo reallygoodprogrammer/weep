@@ -7,8 +7,8 @@ A go program for greping webpages with my most used grep options.
 - recursive mode:
     - only allow urls from same domain on default
     - provide a domains / subdomains white list file option 
+- implement request headers, form/json data, other request methods
 - ? proxies
-- ? implement request headers, form/json data
 
 ## usage
 

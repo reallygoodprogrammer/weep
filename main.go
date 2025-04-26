@@ -188,11 +188,20 @@ func dealWithReq(u string) {
 		match := false
 		markedLine := line
 		for _, pat := range patterns {
-			if strings.Contains(line, pat) && !invertMatch {
-				match = true
-				markedLine = strings.TrimSpace(highlight(markedLine, pat))
-			} else if invertMatch {
-				break
+			if ignoreCase {
+				if strings.Contains(strings.ToLower(line), strings.ToLower(pat)) && !invertMatch {
+					match = true
+					markedLine = strings.TrimSpace(highlight(strings.ToLower(markedLine), strings.ToLower(pat)))
+				} else if invertMatch {
+					break
+				}
+			} else {
+				if strings.Contains(line, pat) && !invertMatch {
+					match = true
+					markedLine = strings.TrimSpace(highlight(markedLine, pat))
+				} else if invertMatch {
+					break
+				}
 			}
 		}
 		if match {
