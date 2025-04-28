@@ -33,11 +33,14 @@ var reqMethod string = "GET"
 
 // patterns to look for
 var patterns []string
+var allowedDomains []string
 
 // channels / waitgroup
 var urls chan string
 var output chan string
 var urlCount sync.WaitGroup
+var urlList []string
+var urlListMut sync.Mutex
 
 // client and limiter
 var client http.Client = http.Client{}
@@ -46,7 +49,7 @@ var limiter *rate.Limiter
 func main() {
 	// parse args
 	var patFromFile = ""
-	var sitesFromFile = ""
+	var domainsFile = ""
 	var concurrency int
 	var rateLimit float64
 
@@ -56,14 +59,14 @@ func main() {
 	}
 
 	flag.StringVar(&patFromFile, "f", "", "obtain patterns from file argument")
-	flag.StringVar(&sitesFromFile, "s", "", "obtain urls from file argument")
+	flag.StringVar(&domainsFile, "d", "", "obtain allowed domains to search from file argument")
 	flag.BoolVar(&ignoreCase, "i", false, "ignore cases of input and patterns")
 	flag.BoolVar(&invertMatch, "v", false, "only return non-martching lines")
 	flag.BoolVar(&withLineNum, "n", false, "display line number of matching line")
 	flag.BoolVar(&withUrl, "H", false, "display URL of matching page before line")
-	flag.BoolVar(&recursive, "r", false, "recursively search url directory using links in page")
-	flag.IntVar(&concurrency, "c", 1, "concurrency of web requests")
-	flag.Float64Var(&rateLimit, "l", 0.0, "rate of requests per second")
+	flag.BoolVar(&recursive, "r", false, "recursively search using src & href values")
+	flag.IntVar(&concurrency, "c", 10, "concurrency of web requests (default 10)")
+	flag.Float64Var(&rateLimit, "l", 0.5, "rate of requests per second (default 0.5 sec)")
 	flag.Parse()
 
 	// good arguments?
@@ -73,31 +76,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// set up rate limiter
 	if rateLimit > 0 {
 		limiter = rate.NewLimiter(rate.Every(time.Duration(rateLimit*float64(time.Second))), 1)
 	} else {
 		limiter = rate.NewLimiter(rate.Inf, 100)
 	}
 
+	// load file options
 	if patFromFile != "" {
-		file, err := os.Open(patFromFile)
-		if err != nil {
-			panic(err)
-		}
-
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			patterns = append(patterns, scanner.Text())
-		}
-		file.Close()
+		patterns = loadFromFile(patFromFile)
 	} else {
 		patterns = []string{args[0]}
 	}
 
+	if domainsFile != "" {
+		allowedDomains = loadFromFile(domainsFile)
+	} else {
+		allowedDomains = []string{}
+	}
+
+	// set up workers
 	urls = make(chan string)
 	output = make(chan string)
 
-	// set up workers
 	var handymen sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		handymen.Add(1)
@@ -106,7 +108,9 @@ func main() {
 			defer handymen.Done()
 
 			for u := range urls {
-				dealWithReq(u)
+				if checkAndAppendUrl(u) {
+					dealWithReq(u)
+				}
 			}
 		}()
 	}
@@ -116,7 +120,6 @@ func main() {
 		close(output)
 	}()
 
-	// set up output
 	var lookyloo sync.WaitGroup
 	lookyloo.Add(1)
 	go func() {
@@ -205,7 +208,6 @@ func dealWithReq(u string) {
 			}
 		}
 		if match {
-			// format output line
 			if withLineNum {
 				lineNumStr := fmt.Sprintf("%d", lineNum)
 				markedLine = fmt.Sprintf("%s: %s", highlight(lineNumStr, lineNumStr), markedLine)
@@ -238,18 +240,23 @@ func dealWithReq(u string) {
 			case urls <- lu:
 				urls <- lu
 			default:
-				dealWithReq(lu)
+				if checkAndAppendUrl(lu) {
+					dealWithReq(lu)
+				}
 			}
 		}
 	}
 }
 
+// Extract Links
+//
 // extract the urls from 'src' and 'href' attributes
 func extractLinks(n *html.Node, u string) ([]string, error) {
 	urlDir, err := url.Parse(u)
 	if err != nil {
 		return nil, err
 	}
+	baseDomain := urlDir.Hostname()
 
 	links := []string{}
 	if n.Type == html.ElementNode {
@@ -259,7 +266,17 @@ func extractLinks(n *html.Node, u string) ([]string, error) {
 				if err == nil {
 					newu = urlDir.ResolveReference(newu)
 				}
-				links = append(links, newu.String())
+				hostname := newu.Hostname()
+				if hostname == baseDomain {
+					links = append(links, newu.String())
+				} else {
+					for _, d := range allowedDomains {
+						if hostname == d {
+							links = append(links, newu.String())
+							break
+						}
+					}
+				}
 			}
 		}
 	}
@@ -273,6 +290,8 @@ func extractLinks(n *html.Node, u string) ([]string, error) {
 	return links, nil
 }
 
+// Remove File
+//
 // get the directory prefix of `fullUrl`
 func removeFile(fullUrl string) (string, error) {
 	u, err := url.Parse(fullUrl)
@@ -283,22 +302,74 @@ func removeFile(fullUrl string) (string, error) {
 	return u.String(), nil
 }
 
+// Failure
+//
 // format a failure message to be sent to 'output' channel
 func failure(err error, url string) {
 	output <- badlight(fmt.Sprintf("failure: %s, url: '%s'", err, url), "failure")
 }
 
+// Highlight
+//
 // highlight's `match` in `input` using highlight color
 func highlight(input string, match string) string {
 	return lightUp(input, match, MatchColor)
 }
 
+// Badlight
+//
 // highlight's `match` in `input` using bad color
 func badlight(input string, match string) string {
 	return lightUp(input, match, BadColor)
 }
 
+// Light Up
 func lightUp(input string, match string, color string) string {
 	h := color + match + ResetColor
 	return strings.ReplaceAll(input, match, h)
+}
+
+// Load From File
+//
+// load lines from a file
+func loadFromFile(filename string) []string {
+	lines := []string{}
+	file, err := os.Open(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(patterns, scanner.Text())
+	}
+	return lines
+}
+
+// Check and Append Url
+//
+// check if a url has been worked on, if not add to urlList
+func checkAndAppendUrl(u string) bool {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return false
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	u = parsed.String()
+
+	doIt := true
+	urlListMut.Lock()
+	for _, visited := range urlList {
+		if u == visited {
+			doIt = false
+			break
+		}
+	}
+	if doIt {
+		urlList = append(urlList, u)
+	}
+	urlListMut.Unlock()
+	return doIt
 }
