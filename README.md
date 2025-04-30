@@ -5,7 +5,8 @@ A go program for greping webpages with my most used grep options.
 ## usage
 
 ```
-usage: cat <urls-file> | ./wepp <pattern> [url+]
+usage: ./weep <pattern> [url(s) or will read stdin]
+-> ctrl-c to stop recursive greping
   -H	display URL of matching page before line
   -c int
     	concurrency of web requests (default 10) (default 10)
@@ -15,9 +16,11 @@ usage: cat <urls-file> | ./wepp <pattern> [url+]
     	obtain patterns from file argument
   -i	ignore cases of input and patterns
   -l float
-    	rate of requests per second (default 0.5 sec) (default 0.5)
+    	rate of requests per second (default: none) (default 0.5)
   -n	display line number of matching line
-  -r	recursively search using src & href values
+  -o string
+    	output file name to write matches too
+  -s	do not recursively search for new pages (single request)
   -v	only return non-martching lines
 ```
 

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"golang.org/x/net/html"
+	"golang.org/x/term"
 	"golang.org/x/time/rate"
 	"io"
 	"net/http"
@@ -46,6 +47,12 @@ var urlListMut sync.Mutex
 var client http.Client = http.Client{}
 var limiter *rate.Limiter
 
+// output
+var outfd *os.File
+var outputFile string
+var isTTY bool
+var errIsTTY bool
+
 func main() {
 	// parse args
 	var patFromFile = ""
@@ -54,19 +61,21 @@ func main() {
 	var rateLimit float64
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: cat <urls-file> | ./wepp <pattern> [url+]\n")
+		fmt.Fprintf(os.Stderr, "usage: ./weep <pattern> [url(s) or will read stdin]\n")
+		fmt.Fprintf(os.Stderr, "-> ctrl-c to stop recursive greping\n")
 		flag.PrintDefaults()
 	}
 
 	flag.StringVar(&patFromFile, "f", "", "obtain patterns from file argument")
 	flag.StringVar(&domainsFile, "d", "", "obtain allowed domains to search from file argument")
+	flag.StringVar(&outputFile, "o", "", "output file name to write matches too")
 	flag.BoolVar(&ignoreCase, "i", false, "ignore cases of input and patterns")
 	flag.BoolVar(&invertMatch, "v", false, "only return non-martching lines")
 	flag.BoolVar(&withLineNum, "n", false, "display line number of matching line")
 	flag.BoolVar(&withUrl, "H", false, "display URL of matching page before line")
-	flag.BoolVar(&recursive, "r", false, "recursively search using src & href values")
+	flag.BoolVar(&recursive, "s", false, "do not recursively search for new pages (single request)")
 	flag.IntVar(&concurrency, "c", 10, "concurrency of web requests (default 10)")
-	flag.Float64Var(&rateLimit, "l", 0.5, "rate of requests per second (default 0.5 sec)")
+	flag.Float64Var(&rateLimit, "l", 0.5, "rate of requests per second (default: none)")
 	flag.Parse()
 
 	// good arguments?
@@ -75,6 +84,21 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	recursive = !recursive
+
+	// set up output file
+	if outputFile != "" {
+		var err error
+		outfd, err = os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE, 0644)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		outfd = os.Stdout
+	}
+	isTTY = term.IsTerminal(int(outfd.Fd()))
+	errIsTTY = term.IsTerminal(int(os.Stderr.Fd()))
 
 	// set up rate limiter
 	if rateLimit > 0 {
@@ -124,7 +148,7 @@ func main() {
 	lookyloo.Add(1)
 	go func() {
 		for o := range output {
-			fmt.Println(o)
+			fmt.Fprintln(outfd, o)
 		}
 		lookyloo.Done()
 	}()
@@ -306,21 +330,27 @@ func removeFile(fullUrl string) (string, error) {
 //
 // format a failure message to be sent to 'output' channel
 func failure(err error, url string) {
-	output <- badlight(fmt.Sprintf("failure: %s, url: '%s'", err, url), "failure")
+	fmt.Fprintln(os.Stderr, badlight(fmt.Sprintf("failure: %s, url: '%s'", err, url), "failure"))
 }
 
 // Highlight
 //
 // highlight's `match` in `input` using highlight color
 func highlight(input string, match string) string {
-	return lightUp(input, match, MatchColor)
+	if isTTY {
+		return lightUp(input, match, MatchColor)
+	}
+	return input
 }
 
 // Badlight
 //
 // highlight's `match` in `input` using bad color
 func badlight(input string, match string) string {
-	return lightUp(input, match, BadColor)
+	if errIsTTY {
+		return lightUp(input, match, BadColor)
+	}
+	return input
 }
 
 // Light Up
