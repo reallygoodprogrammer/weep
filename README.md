@@ -1,6 +1,17 @@
 # weep (web-e grep)
 
-A go program for greping webpages with my most used grep options.
+A program for recursively greping webpage responses with my most frequent
+grep options available.
+
+## install
+
+Install by running:
+
+```
+go install github.com/reallygoodprogrammer/weep@latest
+```
+
+---
 
 ## usage
 
@@ -24,6 +35,8 @@ usage: ./weep <pattern> [url(s) or will read stdin]
   -v	only return non-martching lines
 ```
 
+---
+
 ## licensing
 
-Can be found [here](LICENSE.txt)
+License an be found [here](LICENSE.txt).
