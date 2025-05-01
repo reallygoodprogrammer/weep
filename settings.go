@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/time/rate"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -107,8 +111,33 @@ func (settings *WeepSettings) SetAllowedDomainsFile(allowedDomainsFile string) {
 	settings.AllowedDomains = append(settings.AllowedDomains, loadFromFile(allowedDomainsFile)...)
 }
 
+func (settings *WeepSettings) FindMatches(body *[]byte, u string) []string {
+	results := []string{}
+	if settings.CSSPatterns {
+		htmlDoc := must(goquery.NewDocumentFromReader(bytes.NewReader(*body)))
+		for _, p := range settings.Patterns {
+			htmlDoc.Find(p).Each(func(i int, result *goquery.Selection) {
+				results = append(results, settings.formatted(result.Text(), -1, u))
+			})
+		}
+	} else {
+		scanner := bufio.NewScanner(bytes.NewReader(*body))
+		lineNum := 1
+		for scanner.Scan() {
+			line := scanner.Text()
+			markedLine, match := settings.IsMatch(line)
+			if match {
+				results = append(results, settings.formatted(markedLine, lineNum, u))
+			}
+			lineNum++
+		}
+	}
+
+	return results
+}
+
 // Check if `line` matches matching criteria
-func (settings *WeepSettings) IsMatch(line string, lineNum int, u string) (string, bool) {
+func (settings *WeepSettings) IsMatch(line string) (string, bool) {
 	match := false
 	markedLine := strings.TrimSpace(line)
 	inputLine := line
@@ -120,9 +149,11 @@ func (settings *WeepSettings) IsMatch(line string, lineNum int, u string) (strin
 		for _, reg := range settings.regex {
 			if reg.MatchString(inputLine) && !settings.InvertMatch {
 				match = true
-				matches := reg.FindAllString(inputLine, -1)
-				for _, m := range matches {
-					markedLine = highlight(markedLine, m)
+				if settings.IsTTY {
+					matches := reg.FindAllString(inputLine, -1)
+					for _, m := range matches {
+						markedLine = highlight(markedLine, m)
+					}
 				}
 			}
 		}
@@ -134,7 +165,9 @@ func (settings *WeepSettings) IsMatch(line string, lineNum int, u string) (strin
 			}
 			if strings.Contains(inputLine, inputPattern) && !settings.InvertMatch {
 				match = true
-				markedLine = highlight(markedLine, pat)
+				if settings.IsTTY {
+					markedLine = highlight(markedLine, pat)
+				}
 			} else if settings.InvertMatch {
 				match = true
 				break
@@ -143,4 +176,19 @@ func (settings *WeepSettings) IsMatch(line string, lineNum int, u string) (strin
 	}
 
 	return markedLine, match
+}
+
+func (settings *WeepSettings) formatted(line string, lineNumVal int, url string) string {
+	lineNum := strconv.Itoa(lineNumVal)
+	if settings.IsTTY {
+		lineNum = highlight(lineNum, lineNum)
+		url = highlight(url, url)
+	}
+	if lineNumVal > 0 && settings.WithLineNum {
+		line = string(lineNum) + ": " + line
+	}
+	if settings.WithUrl {
+		line = url + ": " + line
+	}
+	return line
 }

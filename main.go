@@ -49,7 +49,7 @@ func main() {
 		getopt.Flag(&settings.WithUrl, 'H', "display URL of matching page before line")
 		getopt.Flag(&settings.Single, 's', "do not recursively search for new pages (single request)")
 		getopt.Flag(&settings.RegexPatterns, 'E', "treat patterns as regular expressions (RE2)")
-		getopt.Flag(&settings.CSSPatterns, 'c', "match text within tag by a css selector")
+		getopt.Flag(&settings.CSSPatterns, 'c', "find text within tag by a matching css selector")
 		getopt.Flag(&concurrency, 't', "concurrency of web requests (default 10)")
 		getopt.Flag(&rateLimit, 'l', "rate of requests per second (default: none)")
 		getopt.Parse()
@@ -150,18 +150,19 @@ func dealWithReq(u string) {
 	body := must(io.ReadAll(resp.Body))
 	resp.Body.Close()
 
-	// scan over response
-	scanner := bufio.NewScanner(bytes.NewReader(body))
-	lineNum := 1
-	for scanner.Scan() {
-		line := scanner.Text()
-		markedLine, match := settings.IsMatch(line, lineNum, u)
-		if match {
-			output <- markedLine
+	// find matches
+	var finderWG sync.WaitGroup
+	finderWG.Add(1)
+	defer finderWG.Wait()
+	go func() {
+		defer finderWG.Done()
+		results := settings.FindMatches(&body, u)
+		for _, r := range results {
+			output <- r
 		}
-		lineNum++
-	}
+	}()
 
+	// go to other links
 	if !settings.Single {
 		lus := extractLinks(&body, u)
 
