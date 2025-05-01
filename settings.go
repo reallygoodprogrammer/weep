@@ -3,6 +3,7 @@ package main
 import (
 	"golang.org/x/time/rate"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -16,10 +17,7 @@ type WeepSettings struct {
 	WithUrl bool
 	// prefix line number on left side of output
 	WithLineNum bool
-	// only run a single url (do not recurse through page)
-	Single bool
-	// request method to use
-	RequestMethod string
+
 	// output file descriptor
 	Out *os.File
 	// name of output file
@@ -28,24 +26,38 @@ type WeepSettings struct {
 	IsTTY bool
 	// is stderr connected to a tty?
 	ErrIsTTY bool
+
 	// Patterns to look for
 	Patterns []string
+	// Treat patterns as extended regex
+	RegexPatterns bool
+	// Regular expressions
+	regex []*regexp.Regexp
+	// Treat patterns as css selectors
+	CSSPatterns bool
+
 	// allowed domains to recurse through
 	AllowedDomains []string
+	// only run a single url (do not recurse through page)
+	Single bool
+
+	// request method to use
+	RequestMethod string
 	// Limiter for rate limiting requests
 	Limiter *rate.Limiter
 }
 
 func NewWeepSettings() WeepSettings {
 	return WeepSettings{
-		RequestMethod: "GET",
-		Out: os.Stdout,
-		OutputFile: "",
-		IsTTY: isTTY(os.Stdout),
-		ErrIsTTY: isTTY(os.Stderr),
-		Patterns: []string{},
+		RequestMethod:  "GET",
+		Out:            os.Stdout,
+		OutputFile:     "",
+		IsTTY:          isTTY(os.Stdout),
+		ErrIsTTY:       isTTY(os.Stderr),
+		Patterns:       []string{},
+		regex:          []*regexp.Regexp{},
 		AllowedDomains: []string{},
-		Limiter: rate.NewLimiter(rate.Inf, 100),
+		Limiter:        rate.NewLimiter(rate.Inf, 100),
 	}
 }
 
@@ -57,21 +69,38 @@ func (settings *WeepSettings) SetOutputFile(OutputFile string) {
 			panic(err)
 		}
 		settings.IsTTY = isTTY(settings.Out)
-	} 
+	}
 }
 
 func (settings *WeepSettings) SetRateLimit(rateLimit float64) {
 	if rateLimit > 0 {
 		settings.Limiter = rate.NewLimiter(rate.Every(time.Duration(rateLimit*float64(time.Second))), 1)
-	} 
+	}
 }
 
 func (settings *WeepSettings) SetPatternFile(patternFile string) {
-	settings.Patterns = append(settings.Patterns, loadFromFile(patternFile)...)
+	newPatterns := loadFromFile(patternFile)
+	settings.Patterns = append(settings.Patterns, newPatterns...)
+	if settings.RegexPatterns {
+		for _, pattern := range newPatterns {
+			if settings.IgnoreCase {
+				settings.regex = append(settings.regex, regexp.MustCompile(strings.ToLower(pattern)))
+			} else {
+				settings.regex = append(settings.regex, regexp.MustCompile(pattern))
+			}
+		}
+	}
 }
 
 func (settings *WeepSettings) SetPattern(pattern string) {
 	settings.Patterns = append(settings.Patterns, pattern)
+	if settings.RegexPatterns {
+		if settings.IgnoreCase {
+			settings.regex = append(settings.regex, regexp.MustCompile(strings.ToLower(pattern)))
+		} else {
+			settings.regex = append(settings.regex, regexp.MustCompile(pattern))
+		}
+	}
 }
 
 func (settings *WeepSettings) SetAllowedDomainsFile(allowedDomainsFile string) {
@@ -81,29 +110,37 @@ func (settings *WeepSettings) SetAllowedDomainsFile(allowedDomainsFile string) {
 // Check if `line` matches matching criteria
 func (settings *WeepSettings) IsMatch(line string, lineNum int, u string) (string, bool) {
 	match := false
-	markedLine := line
+	markedLine := strings.TrimSpace(line)
+	inputLine := line
 	if settings.IgnoreCase {
-		lowerLine := strings.ToLower(line)
-		for _, pat := range settings.Patterns {
-			lowerPattern := strings.ToLower(pat)
-			if strings.Contains(lowerLine, lowerPattern) && !settings.InvertMatch {
+		inputLine = strings.ToLower(inputLine)
+	}
+
+	if settings.RegexPatterns {
+		for _, reg := range settings.regex {
+			if reg.MatchString(inputLine) && !settings.InvertMatch {
 				match = true
-				markedLine = strings.TrimSpace(highlight(markedLine, pat))
-			} else if settings.InvertMatch {
-				match = true
-				break
+				matches := reg.FindAllString(inputLine, -1)
+				for _, m := range matches {
+					markedLine = highlight(markedLine, m)
+				}
 			}
 		}
 	} else {
 		for _, pat := range settings.Patterns {
-			if strings.Contains(line, pat) && !settings.InvertMatch {
+			inputPattern := pat
+			if settings.IgnoreCase {
+				inputPattern = strings.ToLower(pat)
+			}
+			if strings.Contains(inputLine, inputPattern) && !settings.InvertMatch {
 				match = true
-				markedLine = strings.TrimSpace(highlight(markedLine, pat))
+				markedLine = highlight(markedLine, pat)
 			} else if settings.InvertMatch {
 				match = true
 				break
 			}
 		}
 	}
+
 	return markedLine, match
 }

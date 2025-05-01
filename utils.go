@@ -42,7 +42,6 @@ func lightUp(input string, match string, color string) string {
 	if ind < 0 {
 		panic("no matching value within input")
 	}
-	fmt.Println(input, match)
 	return string(input[0:ind]) + color + string(input[ind:ind+len(match)]) +
 		ResetColor + string(input[ind+len(match):])
 }

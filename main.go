@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/pborman/getopt/v2"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/pborman/getopt/v2"
 	"io"
 	"net/http"
 	"net/url"
@@ -28,41 +28,47 @@ var urlListMut sync.Mutex
 var client http.Client = http.Client{}
 
 func main() {
-	var patternsFile = ""
-	var allowedDomainsFile = ""
-	var outputFile = ""
 	var concurrency = 10
 	var rateLimit = 0.0
+	var args []string
 
 	settings = NewWeepSettings()
 
-	getopt.Flag(&patternsFile, 'f', "obtain patterns from file argument")
-	getopt.Flag(&allowedDomainsFile, 'd', "obtain allowed domains to search from file argument")
-	getopt.Flag(&settings.OutputFile, 'o', "output file name to write matches too")
-	getopt.Flag(&settings.IgnoreCase, 'i', "ignore cases of input and patterns")
-	getopt.Flag(&settings.InvertMatch, 'v', "only return non-martching lines")
-	getopt.Flag(&settings.WithLineNum, 'n', "display line number of matching line")
-	getopt.Flag(&settings.WithUrl, 'H', "display URL of matching page before line")
-	getopt.Flag(&settings.Single, 's', "do not recursively search for new pages (single request)")
-	getopt.Flag(&concurrency, 'c', "concurrency of web requests (default 10)")
-	getopt.Flag(&rateLimit, 'l', "rate of requests per second (default: none)")
-	getopt.Parse()
-	args := getopt.Args()
+	// parse arguments
+	func() {
+		var patternsFile = ""
+		var allowedDomainsFile = ""
+		var outputFile = ""
 
-	if len(args) == 0 && patternsFile == "" {
-		getopt.Usage()
-		os.Exit(1)
-	}
+		getopt.Flag(&patternsFile, 'f', "obtain patterns from file argument")
+		getopt.Flag(&allowedDomainsFile, 'd', "obtain allowed domains to search from file argument")
+		getopt.Flag(&settings.OutputFile, 'o', "output file name to write matches too")
+		getopt.Flag(&settings.IgnoreCase, 'i', "ignore case of input/patterns")
+		getopt.Flag(&settings.InvertMatch, 'v', "only return non-martching lines")
+		getopt.Flag(&settings.WithLineNum, 'n', "display line number of matching line")
+		getopt.Flag(&settings.WithUrl, 'H', "display URL of matching page before line")
+		getopt.Flag(&settings.Single, 's', "do not recursively search for new pages (single request)")
+		getopt.Flag(&settings.RegexPatterns, 'E', "treat patterns as regular expressions (RE2)")
+		getopt.Flag(&settings.CSSPatterns, 'c', "match text within tag by a css selector")
+		getopt.Flag(&concurrency, 't', "concurrency of web requests (default 10)")
+		getopt.Flag(&rateLimit, 'l', "rate of requests per second (default: none)")
+		getopt.Parse()
+		args = getopt.Args()
 
-	settings.SetOutputFile(outputFile)
-	settings.SetRateLimit(rateLimit)
-	if patternsFile != "" {
-		settings.SetPatternFile(patternsFile)
-	} else {
-		settings.SetPattern(args[0])
-	}
-	settings.SetAllowedDomainsFile(allowedDomainsFile)
+		if len(args) == 0 && patternsFile == "" {
+			getopt.Usage()
+			os.Exit(1)
+		}
 
+		settings.SetOutputFile(outputFile)
+		settings.SetRateLimit(rateLimit)
+		if patternsFile != "" {
+			settings.SetPatternFile(patternsFile)
+		} else {
+			settings.SetPattern(args[0])
+		}
+		settings.SetAllowedDomainsFile(allowedDomainsFile)
+	}()
 
 	// set up workers
 	urls = make(chan string)
@@ -71,7 +77,6 @@ func main() {
 	var handymen sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		handymen.Add(1)
-
 		go func() {
 			defer handymen.Done()
 
@@ -218,6 +223,7 @@ func must[T any](val T, err error) T {
 	}
 	return val
 }
+
 // Check and Append Url
 //
 // check if a url has been worked on, if not add to urlList
