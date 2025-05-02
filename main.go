@@ -40,7 +40,7 @@ func main() {
 		var allowedDomainsFile = ""
 		var outputFile = ""
 
-		getopt.Flag(&patternsFile, 'f', "obtain patterns from file argument")
+		getopt.Flag(&patternsFile, 'F', "obtain patterns from file argument")
 		getopt.Flag(&allowedDomainsFile, 'd', "obtain allowed domains to search from file argument")
 		getopt.Flag(&settings.OutputFile, 'o', "output file name to write matches too")
 		getopt.Flag(&settings.IgnoreCase, 'i', "ignore case of input/patterns")
