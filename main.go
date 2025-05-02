@@ -236,6 +236,9 @@ func checkAndAppendUrl(u string) bool {
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	u = parsed.String()
+	if u[len(u)-1] == '/' {
+		u = string(u[:len(u)-1])
+	}
 
 	doIt := true
 	urlListMut.Lock()
