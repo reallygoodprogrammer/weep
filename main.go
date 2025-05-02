@@ -51,7 +51,7 @@ func main() {
 		getopt.Flag(&settings.RegexPatterns, 'E', "treat patterns as regular expressions (RE2)")
 		getopt.Flag(&settings.CSSPatterns, 'c', "find text within tag by a matching css selector")
 		getopt.Flag(&concurrency, 't', "concurrency of web requests (default 10)")
-		getopt.Flag(&rateLimit, 'l', "rate of requests per second (default: none)")
+		getopt.Flag(&rateLimit, 'r', "rate of requests per second (default: none)")
 		getopt.Parse()
 		args = getopt.Args()
 
