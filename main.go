@@ -22,7 +22,7 @@ var urls chan string
 var output chan string
 var urlCount sync.WaitGroup
 var urlList []string
-var urlListMut sync.Mutex
+var urlListMut sync.RWMutex
 
 // client
 var client http.Client = http.Client{}
@@ -83,6 +83,8 @@ func main() {
 			for u := range urls {
 				if checkAndAppendUrl(u) {
 					dealWithReq(u)
+				} else {
+					urlCount.Done()
 				}
 			}
 		}()
@@ -171,7 +173,7 @@ func dealWithReq(u string) {
 			urlCount.Add(1)
 			select {
 			case urls <- lu:
-				urls <- lu
+				continue
 			default:
 				if checkAndAppendUrl(lu) {
 					dealWithReq(lu)
@@ -241,16 +243,18 @@ func checkAndAppendUrl(u string) bool {
 	}
 
 	doIt := true
-	urlListMut.Lock()
+	urlListMut.RLock()
 	for _, visited := range urlList {
 		if u == visited {
 			doIt = false
 			break
 		}
 	}
+	urlListMut.RUnlock()
 	if doIt {
+		urlListMut.Lock()
 		urlList = append(urlList, u)
+		urlListMut.Unlock()
 	}
-	urlListMut.Unlock()
 	return doIt
 }
