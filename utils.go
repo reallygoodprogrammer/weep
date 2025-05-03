@@ -40,7 +40,7 @@ func badlight(input string, match string) string {
 func lightUp(input string, match string, color string) string {
 	ind := strings.Index(strings.ToLower(input), strings.ToLower(match))
 	if ind < 0 {
-		panic("no matching value within input")
+		return input
 	}
 	return string(input[0:ind]) + color + string(input[ind:ind+len(match)]) +
 		ResetColor + string(input[ind+len(match):])

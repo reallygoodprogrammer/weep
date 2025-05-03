@@ -1,6 +1,7 @@
 package main
 
 import (
+//	"fmt"
 	"bufio"
 	"bytes"
 	"github.com/PuerkitoBio/goquery"
@@ -35,10 +36,18 @@ type WeepSettings struct {
 	Patterns []string
 	// Treat patterns as extended regex
 	RegexPatterns bool
+	// Match by attribute content rather than line content
+	MatchByAttributes bool
+	// Attributes to search through
+	patternatts []string
+	// filter for finding appropriate attributes
+	patternattfilter string
 	// Regular expressions
 	regex []*regexp.Regexp
-	// Treat patterns as css selectors
+	// match inner html content of css selector filter
 	CSSPatterns bool
+	// css pattern to filter content by
+	csspattern string
 
 	// allowed domains to recurse through
 	AllowedDomains []string
@@ -59,6 +68,7 @@ func NewWeepSettings() WeepSettings {
 		IsTTY:          isTTY(os.Stdout),
 		ErrIsTTY:       isTTY(os.Stderr),
 		Patterns:       []string{},
+		patternatts:	[]string{},
 		regex:          []*regexp.Regexp{},
 		AllowedDomains: []string{},
 		Limiter:        rate.NewLimiter(rate.Inf, 100),
@@ -117,24 +127,73 @@ func (settings *WeepSettings) SetAllowedDomains(allowedDomains string) {
 	}
 }
 
+func (settings *WeepSettings) SetMatchAttributes(patternAttributes string) {
+	if patternAttributes != "" {
+		settings.MatchByAttributes = true
+		settings.patternatts = append(settings.patternatts, strings.Split(patternAttributes, ",")...)
+		bracket := []string{}
+		for _, p := range settings.patternatts {
+			bracket = append(bracket, "["+p+"]")
+		}
+		settings.patternattfilter = strings.Join(bracket, " , ")
+	}
+}
+
+func (settings *WeepSettings) SetMatchCSS(patternCSS string) {
+	if patternCSS != "" {
+		settings.CSSPatterns = true
+		settings.csspattern = patternCSS
+	}
+}
+
 func (settings *WeepSettings) FindMatches(body *[]byte, u string) []string {
 	results := []string{}
+
+	checkAndAdd := func(line string, lineNum int) bool {
+		markedLine, match := settings.IsMatch(line)
+		if match {
+			results = append(results, settings.formatted(markedLine, lineNum, u))
+			return true
+		}
+		return false
+	}
+
+	matchByAttr := func(doc *goquery.Selection) {
+		doc.Find(settings.patternattfilter).Each(func(i int, result *goquery.Selection) {
+			for _, a := range settings.patternatts {
+				attr, found := result.Attr(a)
+				if !found {
+					continue
+				}
+				if checkAndAdd(attr, -1) {
+					break
+				}
+			}
+		})
+	}
+
 	if settings.CSSPatterns {
 		htmlDoc := must(goquery.NewDocumentFromReader(bytes.NewReader(*body)))
 		for _, p := range settings.Patterns {
 			htmlDoc.Find(p).Each(func(i int, result *goquery.Selection) {
-				results = append(results, settings.formatted(result.Text(), -1, u))
+				if settings.MatchByAttributes {
+					matchByAttr(result)
+				} else {
+					value, err := result.Html()
+					if err == nil {
+						checkAndAdd(value, -1)
+					}
+				}
 			})
 		}
+	} else if settings.MatchByAttributes {
+		htmlDoc := must(goquery.NewDocumentFromReader(bytes.NewReader(*body)))
+		matchByAttr(htmlDoc.Selection)
 	} else {
 		scanner := bufio.NewScanner(bytes.NewReader(*body))
 		lineNum := 1
 		for scanner.Scan() {
-			line := scanner.Text()
-			markedLine, match := settings.IsMatch(line)
-			if match {
-				results = append(results, settings.formatted(markedLine, lineNum, u))
-			}
+			checkAndAdd(scanner.Text(), lineNum)
 			lineNum++
 		}
 	}

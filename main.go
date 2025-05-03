@@ -37,23 +37,26 @@ func main() {
 	// parse arguments
 	func() {
 		var patternsFile = ""
+		var outputFile = ""
 		var allowedDomainsFile = ""
 		var allowedDomains = ""
-		var outputFile = ""
+		var patternAttributes = ""
+		var cssFilter = ""
 
 		getopt.Flag(&patternsFile, 'F', "obtain matching patterns from file argument")
 		getopt.Flag(&allowedDomainsFile, 'D', "obtain allowed domains to search from file argument")
-		getopt.Flag(&allowedDomains, 'd', "allowed domains string with each hostname separated by ','")
+		getopt.Flag(&allowedDomains, 'd', "allowed domains string with each hostname, sep by ','")
 		getopt.Flag(&settings.OutputFile, 'o', "output file name to write matching content too")
 		getopt.Flag(&settings.IgnoreCase, 'i', "ignore case of input/patterns")
 		getopt.Flag(&settings.InvertMatch, 'v', "only return non-matching lines")
-		getopt.Flag(&settings.WithLineNum, 'n', "prefix line number to matching line")
+		getopt.Flag(&settings.WithLineNum, 'n', "prefix line number to matching line for non-css matching")
 		getopt.Flag(&settings.WithUrl, 'H', "prefix URL of request to matching line")
 		getopt.Flag(&settings.Single, 's', "make a single request (do not recursively search)")
 		getopt.Flag(&settings.RegexPatterns, 'E', "treat patterns as regular expressions (RE2)")
-		getopt.Flag(&settings.CSSPatterns, 'c', "find text within tag by a matching css selector")
+		getopt.Flag(&cssFilter, 'c', "search inner html of matching css selector argument")
 		getopt.Flag(&concurrency, 't', "concurrency of web requests (default: 10)")
 		getopt.Flag(&rateLimit, 'r', "rate of requests per second (default: none)")
+		getopt.Flag(&patternAttributes, 'a', "match only on the content of each attribute, sep by ','")
 		getopt.Parse()
 		args = getopt.Args()
 
@@ -71,6 +74,10 @@ func main() {
 		}
 		settings.SetAllowedDomainsFile(allowedDomainsFile)
 		settings.SetAllowedDomains(allowedDomains)
+		settings.SetMatchAttributes(patternAttributes)
+		if cssFilter != "" {
+			settings.SetMatchCSS(cssFilter)
+		}
 	}()
 
 	// set up workers
