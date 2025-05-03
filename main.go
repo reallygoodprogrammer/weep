@@ -38,19 +38,21 @@ func main() {
 	func() {
 		var patternsFile = ""
 		var allowedDomainsFile = ""
+		var allowedDomains = ""
 		var outputFile = ""
 
-		getopt.Flag(&patternsFile, 'F', "obtain patterns from file argument")
-		getopt.Flag(&allowedDomainsFile, 'd', "obtain allowed domains to search from file argument")
-		getopt.Flag(&settings.OutputFile, 'o', "output file name to write matches too")
+		getopt.Flag(&patternsFile, 'F', "obtain matching patterns from file argument")
+		getopt.Flag(&allowedDomainsFile, 'D', "obtain allowed domains to search from file argument")
+		getopt.Flag(&allowedDomains, 'd', "allowed domains string with each hostname separated by ','")
+		getopt.Flag(&settings.OutputFile, 'o', "output file name to write matching content too")
 		getopt.Flag(&settings.IgnoreCase, 'i', "ignore case of input/patterns")
-		getopt.Flag(&settings.InvertMatch, 'v', "only return non-martching lines")
-		getopt.Flag(&settings.WithLineNum, 'n', "display line number of matching line")
+		getopt.Flag(&settings.InvertMatch, 'v', "only return non-matching lines")
+		getopt.Flag(&settings.WithLineNum, 'n', "prefix line number onto matching line")
 		getopt.Flag(&settings.WithUrl, 'H', "display URL of matching page before line")
 		getopt.Flag(&settings.Single, 's', "do not recursively search for new pages (single request)")
 		getopt.Flag(&settings.RegexPatterns, 'E', "treat patterns as regular expressions (RE2)")
 		getopt.Flag(&settings.CSSPatterns, 'c', "find text within tag by a matching css selector")
-		getopt.Flag(&concurrency, 't', "concurrency of web requests (default 10)")
+		getopt.Flag(&concurrency, 't', "concurrency of web requests (default: 10)")
 		getopt.Flag(&rateLimit, 'r', "rate of requests per second (default: none)")
 		getopt.Parse()
 		args = getopt.Args()
@@ -68,6 +70,7 @@ func main() {
 			settings.SetPattern(args[0])
 		}
 		settings.SetAllowedDomainsFile(allowedDomainsFile)
+		settings.SetAllowedDomains(allowedDomains)
 	}()
 
 	// set up workers

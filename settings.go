@@ -111,6 +111,10 @@ func (settings *WeepSettings) SetAllowedDomainsFile(allowedDomainsFile string) {
 	settings.AllowedDomains = append(settings.AllowedDomains, loadFromFile(allowedDomainsFile)...)
 }
 
+func (settings *WeepSettings) SetAllowedDomains(allowedDomains string) {
+	settings.AllowedDomains = append(settings.AllowedDomains, strings.Split(allowedDomains, ",")...)
+}
+
 func (settings *WeepSettings) FindMatches(body *[]byte, u string) []string {
 	results := []string{}
 	if settings.CSSPatterns {
