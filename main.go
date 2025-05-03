@@ -29,7 +29,7 @@ var client http.Client = http.Client{}
 
 func main() {
 	var concurrency = 10
-	var rateLimit = 0.0
+	var rateLimit = 0.5
 	var args []string
 
 	settings = NewWeepSettings()
@@ -55,7 +55,7 @@ func main() {
 		getopt.Flag(&settings.RegexPatterns, 'E', "treat patterns as regular expressions (RE2)")
 		getopt.Flag(&cssFilter, 'c', "search inner html of matching css selector argument")
 		getopt.Flag(&concurrency, 't', "concurrency of web requests (default: 10)")
-		getopt.Flag(&rateLimit, 'r', "rate of requests per second (default: none)")
+		getopt.Flag(&rateLimit, 'r', "rate of requests per second (default: 0.5)")
 		getopt.Flag(&patternAttributes, 'a', "match only on the content of each attribute, sep by ','")
 		getopt.Parse()
 		args = getopt.Args()
