@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/time/rate"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -53,6 +54,10 @@ type WeepSettings struct {
 	AllowedDomains []string
 	// only run a single url (do not recurse through page)
 	Single bool
+	// attributes to find urls within
+	UrlAttributes []string
+	// string for finding tags with url attributes
+	urlAttributesString string
 
 	// request method to use
 	RequestMethod string
@@ -72,6 +77,7 @@ func NewWeepSettings() WeepSettings {
 		regex:          []*regexp.Regexp{},
 		AllowedDomains: []string{},
 		Limiter:        rate.NewLimiter(rate.Inf, 100),
+		UrlAttributes:	[]string{},
 	}
 }
 
@@ -143,6 +149,17 @@ func (settings *WeepSettings) SetMatchCSS(patternCSS string) {
 	if patternCSS != "" {
 		settings.CSSPatterns = true
 		settings.csspattern = patternCSS
+	}
+}
+
+func (settings *WeepSettings) SetUrlAttributes(urlAttributes string) {
+	if urlAttributes != "" {
+		settings.UrlAttributes = append(settings.UrlAttributes, strings.Split(urlAttributes, ",")...)
+		bracket := []string{}
+		for _, a := range settings.UrlAttributes {
+			bracket = append(bracket, "["+a+"]")
+		}
+		settings.urlAttributesString = strings.Join(bracket, ", ")
 	}
 }
 
@@ -256,4 +273,40 @@ func (settings *WeepSettings) formatted(line string, lineNumVal int, url string)
 		line = url + ": " + line
 	}
 	return line
+}
+
+
+// Extract Links
+//
+// extract the urls from 'src' and 'href' attributes
+func (settings *WeepSettings) extractLinks(body *[]byte, u string) []string {
+	dirPrefix := must(url.Parse(u))
+	dirPrefix.Path += "/"
+
+	htmlDoc := must(goquery.NewDocumentFromReader(bytes.NewReader(*body)))
+
+	links := []string{}
+	htmlDoc.Find(settings.urlAttributesString).Each(func(i int, selection *goquery.Selection) {
+		for _, attr := range settings.UrlAttributes {
+			link, found := selection.Attr(attr)
+			if !found {
+				continue
+			}
+
+			newUrl, _ := url.Parse(link)
+			newUrl = dirPrefix.ResolveReference(newUrl)
+			hostname := newUrl.Hostname()
+			if hostname == dirPrefix.Hostname() {
+				links = append(links, newUrl.String())
+			} else {
+				for _, d := range settings.AllowedDomains {
+					if hostname == d {
+						links = append(links, newUrl.String())
+						break
+					}
+				}
+			}
+		}
+	})
+	return links
 }

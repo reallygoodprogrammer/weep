@@ -42,6 +42,7 @@ func main() {
 		var allowedDomains = ""
 		var patternAttributes = ""
 		var cssFilter = ""
+		var urlAttributes = ""
 
 		getopt.Flag(&patternsFile, 'F', "obtain matching patterns from file argument")
 		getopt.Flag(&allowedDomainsFile, 'D', "obtain allowed domains to search from file argument")
@@ -57,6 +58,7 @@ func main() {
 		getopt.Flag(&concurrency, 't', "concurrency of web requests (default: 10)")
 		getopt.Flag(&rateLimit, 'r', "rate of requests per second (default: 0.5)")
 		getopt.Flag(&patternAttributes, 'a', "match only on the content of each attribute, sep by ','")
+		getopt.Flag(&urlAttributes, 'A', "attributes to search for urls for spidering, sep by ','")
 		getopt.Parse()
 		args = getopt.Args()
 
@@ -77,6 +79,9 @@ func main() {
 		settings.SetMatchAttributes(patternAttributes)
 		if cssFilter != "" {
 			settings.SetMatchCSS(cssFilter)
+		}
+		if urlAttributes != "" {
+			settings.SetUrlAttributes(urlAttributes)
 		}
 	}()
 
@@ -176,7 +181,7 @@ func dealWithReq(u string) {
 
 	// go to other links
 	if !settings.Single {
-		lus := extractLinks(&body, u)
+		lus := settings.extractLinks(&body, u)
 
 		// either send url to channel, or deal with it yourself
 		for _, lu := range lus {
